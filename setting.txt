@@ -1,0 +1,12 @@
+batch_size=10
+negative_num=7
+negative_exclusive=True
+n_epochs=100
+evaluate_every=1
+dropout=0.2
+gpu=-1
+learning_rate=0.01
+n_bases=4
+embedding_size=20
+regularization=0.01
+grad_norm=1.0

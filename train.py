@@ -63,7 +63,7 @@ def main(args):
             train_losses.append(loss)
 
         if epoch % int(setting['evaluate_every']) == 0:
-            print("\tepoch {}: train loss = {}".format(epoch, sum(train_losses)))
+            print('\t' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '  epoch {}: train loss = {}'.format(epoch, np.mean(train_losses)))
 
             if use_cuda:
                 model.cpu()

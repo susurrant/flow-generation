@@ -30,7 +30,7 @@ def main(args):
                                                                 )
     print('\nCreate model...')
     model = RGCN(len(entity2id), len(relation2id), num_bases=int(setting['n_bases']),
-                 embedding_size=int(setting['embedding_size']), dropout=float(setting['dropout']))
+                 embedding_size=int(setting['embedding_size']), dropout=float(setting['dropout']), bias=float(setting['min_intensity']))
     print(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=float(setting['learning_rate']))
 

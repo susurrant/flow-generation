@@ -10,3 +10,4 @@ n_bases=4
 embedding_size=20
 regularization=0.01
 grad_norm=1.0
+min_intensity=0

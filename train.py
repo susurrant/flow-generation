@@ -60,11 +60,12 @@ def main(args):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), float(setting['grad_norm']))
             optimizer.step()
-            train_losses.append(loss)
+            train_losses.append(loss.detach().numpy())
 
         if epoch % int(setting['evaluate_every']) == 0:
-            print('\t' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '  epoch {}: train loss = {}'.format(epoch, np.mean(train_losses)))
-
+            print('\t' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') +
+                  ' epoch {}: train loss = {}'.format(epoch, np.mean(train_losses)))
+            
             if use_cuda:
                 model.cpu()
 

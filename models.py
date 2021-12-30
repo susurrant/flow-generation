@@ -13,13 +13,14 @@ from utils import uniform
 
 
 class RGCN(torch.nn.Module):
-    def __init__(self, num_entities, num_relations, num_bases, embedding_size, dropout):
+    def __init__(self, num_entities, num_relations, num_bases, embedding_size, dropout, bias=0):
         super(RGCN, self).__init__()
 
         self.entity_embedding = nn.Embedding(num_entities, embedding_size)
         self.relation_embedding = nn.Parameter(torch.Tensor(1, embedding_size))
-
+        self.bias = nn.Parameter(torch.Tensor(1))
         nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
+        nn.init.constant_(self.bias, bias)
 
         self.conv1 = RGCNConv(
             embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
@@ -40,8 +41,8 @@ class RGCN(torch.nn.Module):
         s = embedding[triplets[:, 0]]
         r = self.relation_embedding[triplets[:, 1]]
         o = embedding[triplets[:, 2]]
-        score = torch.sum(s * r * o, dim=1)
-        
+        score = torch.sum(s * r * o, dim=1) + self.bias
+
         return score
 
     def score_loss(self, embedding, triplets, target):

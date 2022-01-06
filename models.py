@@ -41,7 +41,7 @@ class RGCN(torch.nn.Module):
         s = embedding[triplets[:, 0]]
         r = self.relation_embedding[triplets[:, 1]]
         o = embedding[triplets[:, 2]]
-        score = torch.sum(s * r * o, dim=1) + self.bias
+        score = F.relu(torch.sum(s * r * o, dim=1) + self.bias)
 
         return score
 

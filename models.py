@@ -24,16 +24,17 @@ class RGCN(torch.nn.Module):
 
         self.conv1 = RGCNConv(
             embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
-        self.conv2 = RGCNConv(
-            embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
+        # self.conv2 = RGCNConv(
+        #     embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
 
         self.dropout_ratio = dropout
 
     def forward(self, entity, edge_index, edge_type, edge_norm):
         x = self.entity_embedding(entity)
-        x = F.relu(self.conv1(x, edge_index, edge_type, edge_norm))
-        x = F.dropout(x, p=self.dropout_ratio, training=self.training)
-        x = self.conv2(x, edge_index, edge_type, edge_norm)
+        x = self.conv1(x, edge_index, edge_type, edge_norm)
+        # x = F.relu(self.conv1(x, edge_index, edge_type, edge_norm))
+        # x = F.dropout(x, p=self.dropout_ratio, training=self.training)
+        # x = self.conv2(x, edge_index, edge_type, edge_norm)
         
         return x
 

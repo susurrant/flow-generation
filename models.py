@@ -17,7 +17,7 @@ class RGCN(torch.nn.Module):
         super(RGCN, self).__init__()
 
         self.entity_embedding = nn.Embedding(num_entities, embedding_size)
-        self.relation_embedding = nn.Parameter(torch.Tensor(1, embedding_size))
+        self.relation_embedding = nn.Parameter(torch.Tensor(1, embedding_size, embedding_size))
         self.bias = nn.Parameter(torch.Tensor(1))
         nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
         nn.init.constant_(self.bias, bias)
@@ -39,10 +39,12 @@ class RGCN(torch.nn.Module):
         return x
 
     def distmult(self, embedding, triplets):
-        s = embedding[triplets[:, 0]]
+        s = embedding[triplets[:, 0]].unsqueeze(1)
         r = self.relation_embedding[triplets[:, 1]]
-        o = embedding[triplets[:, 2]]
-        score = F.relu(torch.sum(s * r * o, dim=1) + self.bias)
+        o = embedding[triplets[:, 2]].unsqueeze(2)
+        score = torch.matmul(s, r)
+        score = torch.matmul(score, o).squeeze()
+        score = F.relu(score + self.bias)
 
         return score
 

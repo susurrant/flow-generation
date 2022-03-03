@@ -10,7 +10,7 @@ import torch
 import time
 import datetime
 
-from utils import load_graph_data, load_flow_data, read_setting
+from utils import load_graph_data, load_flow_data, read_setting, negative_sampling
 from models import RGCN
 
 
@@ -22,20 +22,20 @@ def main(args):
         torch.cuda.set_device(setting['gpu'])
 
     entity2id, relation2id, embedding_graph = load_graph_data(args.dataset)
-    train_batches, valid_samples, valid_labels = load_flow_data(args.dataset, entity2id,
-                                                                mode='train', entity_set=entity2id.values(),
-                                                                batch_size=int(setting['batch_size']),
-                                                                negative_num=int(setting['negative_num']),
-                                                                exclusive=eval(setting['negative_exclusive'])
-                                                                )
+    train_batches, train_samples, valid_samples, valid_labels \
+        = load_flow_data(args.dataset, entity2id, mode='train', batch_size=int(setting['batch_size']))
+
     print('\nCreate model...')
     model = RGCN(len(entity2id), len(relation2id), num_bases=int(setting['n_bases']),
                  embedding_size=int(setting['embedding_size']), dropout=float(setting['dropout']), bias=float(setting['min_intensity']))
     print(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=float(setting['learning_rate']))
 
+    device = None
     if use_cuda:
         model.cuda()
+        device = torch.device('cuda')
+        embedding_graph.to(device)
 
     print('\nStart training...')
     best_loss = np.inf
@@ -46,8 +46,17 @@ def main(args):
         train_losses = []
 
         for samples, labels in train_batches:
+            if setting['negative_exclusive'] == 'True':
+                samples, labels = negative_sampling(samples, labels,
+                                                    entity_set=entity2id.values(),
+                                                    negative_num=int(setting['negative_num']),
+                                                    known_samples=train_samples)
+            else:
+                samples, labels = negative_sampling(samples, labels,
+                                                    entity_set=entity2id.values(),
+                                                    negative_num=int(setting['negative_num']))
+
             if use_cuda:
-                device = torch.device('cuda')
                 samples.to(device)
                 labels.to(device)
 
@@ -67,7 +76,8 @@ def main(args):
                   ' epoch {}: train loss = {}'.format(epoch, np.mean(train_losses)))
             
             if use_cuda:
-                model.cpu()
+                valid_samples.to(device)
+                valid_labels.to(device)
 
             model.eval()
 

@@ -68,7 +68,7 @@ def load_graph_data(file_path):
     return entity2id, relation2id, embedding_graph
 
 
-def load_flow_data(file_path, entity2id, mode, batch_size):
+def load_flow_data(file_path, entity2id, mode, batch_size=128):
     print('\nLoad flow data...')
     if mode == 'train':
         train_od, train_intensity = read_flows(os.path.join(file_path, 'train.txt'), entity2id)

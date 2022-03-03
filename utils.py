@@ -68,7 +68,7 @@ def load_graph_data(file_path):
     return entity2id, relation2id, embedding_graph
 
 
-def load_flow_data(file_path, entity2id, mode, batch_size=0, entity_set=None, negative_num=None, exclusive=False):
+def load_flow_data(file_path, entity2id, mode, batch_size):
     print('\nLoad flow data...')
     if mode == 'train':
         train_od, train_intensity = read_flows(os.path.join(file_path, 'train.txt'), entity2id)
@@ -78,10 +78,9 @@ def load_flow_data(file_path, entity2id, mode, batch_size=0, entity_set=None, ne
         print('\t\tnum_train_triples: {}'.format(len(train_od)))
         print('\t\tnum_valid_triples: {}'.format(len(valid_od)))
 
-        train_samples, train_labels = negative_sampling(train_od, train_intensity, entity_set, negative_num, exclusive)
-        train_batches = batch_generator(train_samples, train_labels, batch_size)
+        train_batches = batch_generator(train_od, train_intensity, batch_size)
 
-        return train_batches, torch.from_numpy(valid_od), torch.from_numpy(valid_intensity)
+        return train_batches, train_od, torch.from_numpy(valid_od), torch.from_numpy(valid_intensity)
     elif mode == 'test':
         test_od, test_intensity = read_flows(os.path.join(file_path, 'test.txt'), entity2id)
 
@@ -105,12 +104,11 @@ def read_flows(file_path, entity2id):
     return np.array(od), np.array(intensity)
 
 
-def negative_sampling(pos_samples, pos_labels, entity_set, negative_num, exclusive=False):
-    print('Sample negative flows...')
+def negative_sampling(pos_samples, pos_labels, entity_set, negative_num, known_samples=None):
     candidate = []
-    if exclusive:
+    if known_samples is not None:
         known_edges = set()
-        for edge in pos_samples:
+        for edge in known_samples:
             known_edges.add((edge[0], edge[2]))
 
         for i in entity_set:
@@ -139,7 +137,8 @@ def batch_generator(triplets, labels, batch_size=0):
     if batch_size <= 0 or batch_size > triplets.shape[0]:
         batch_size = triplets.shape[0]
 
-    return DataLoader(TensorDataset(triplets, labels), batch_size=batch_size, shuffle=True, num_workers=4)
+    return DataLoader(TensorDataset(torch.from_numpy(triplets), torch.from_numpy(labels)), batch_size=batch_size,
+                      shuffle=True, num_workers=0)
 
 
 def edge_normalization(edge_type, edge_index, num_entity, num_relation):
@@ -181,14 +180,13 @@ def build_embedding_graph(num_nodes, num_rels, triplets):
     # print(src)
     # print('-------dst:')
     # print(dst)
-    rel = torch.cat((rel, rel + num_rels))
+    edge_type = torch.cat((rel, rel + num_rels))
 
     edge_index = torch.stack((src, dst))
     # print('-------edge_index:')
     # print(edge_index)
-    edge_type = rel
     # print('-------edge_type:')
-    # print(rel)
+    # print(edge_type)
 
     data = Data(edge_index=edge_index)
     data.entity = torch.from_numpy(np.arange(num_nodes))

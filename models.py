@@ -142,7 +142,7 @@ class RGCNConv(MessagePassing):
         return out if edge_norm is None else out * edge_norm.view(-1, 1)
 
     def update(self, aggr_out, x):
-        if self.root is not None:   # possible self-loop
+        if self.root is not None:   # add self-loop
             if x is None:
                 aggr_out += self.root
             else:

@@ -138,7 +138,7 @@ class RGCNConv(MessagePassing):
             # (5, 4) -> (5, 1, 4) matmul (5, 4, 8) -> (5, 1, 8) squeeze -> (5, 8)
             out = torch.bmm(x_j.unsqueeze(1), w).squeeze(-2)
 
-        # 不同relation边使用不同参数矩阵，注意此前已经对edge进行了正则化，之后之后直接调用内置的aggregate函数
+        # For symmetric normalization, since aggr='mean' in MessagePassing
         return out if edge_norm is None else out * edge_norm.view(-1, 1)
 
     def update(self, aggr_out, x):

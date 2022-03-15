@@ -118,6 +118,7 @@ class GMNN(nn.Module):
 if __name__ == '__main__':
     path = '../data/simple/'
 
+    # Use the same parameters as GCN if possible
     settings = {
         'batch_size': 512,
         'learning_rate': 0.001,

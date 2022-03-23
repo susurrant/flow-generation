@@ -19,7 +19,7 @@ class RGCN(torch.nn.Module):
         self.entity_embedding = nn.Embedding(num_entities, embedding_size)
         self.relation_embedding = nn.Parameter(torch.Tensor(1, embedding_size, embedding_size))
         self.bias = nn.Parameter(torch.Tensor(1))
-        nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
+        # nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
         nn.init.constant_(self.bias, bias)
 
         self.conv1 = RGCNConv(

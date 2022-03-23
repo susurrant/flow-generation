@@ -180,7 +180,7 @@ def build_embedding_graph(num_nodes, num_rels, triplets):
     # print(src)
     # print('-------dst:')
     # print(dst)
-    edge_type = torch.cat((rel, rel))
+    edge_type = torch.cat((rel, rel + num_rels))
 
     edge_index = torch.stack((src, dst))
     # print('-------edge_index:')

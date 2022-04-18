@@ -64,5 +64,6 @@ if __name__ == '__main__':
                 # print('\t' + args.setting)
 
                 r = evaluate(args, file_mark)
-                print('[rmse, mape, cpc, r2]=', r)
+                print('Metrics:')
+                print('\t[rmse, mape, cpc, r2]=', r)
                 f.write(','.join([file_mark] + list(map(str, r)))+'\r\n')

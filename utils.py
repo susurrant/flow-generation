@@ -53,7 +53,7 @@ def load_graph_data(file_path):
     entity2id, relation2id = load_entity_relation(file_path)
 
     graph_triplets = []
-    with open(os.path.join(file_path, 'graph.txt'), 'r') as f:
+    with open(os.path.join(file_path, 'graph.txt'), 'r', encoding='utf-8') as f:
         for line in f:
             head, relation, tail = line.strip().split('\t')
             graph_triplets.append((entity2id[head], relation2id[relation], entity2id[tail]))
@@ -68,7 +68,7 @@ def load_graph_data(file_path):
     return entity2id, relation2id, embedding_graph
 
 
-def load_flow_data(file_path, entity2id, mode, batch_size=128):
+def load_flow_data(file_path, entity2id, mode, batch_size=0):
     print('\nLoad flow data...')
     if mode == 'train':
         train_od, train_intensity = read_flows(os.path.join(file_path, 'train.txt'), entity2id)
@@ -79,14 +79,13 @@ def load_flow_data(file_path, entity2id, mode, batch_size=128):
         print('\t\tnum_valid_triples: {}'.format(len(valid_od)))
 
         train_batches = batch_generator(train_od, train_intensity, batch_size)
-
-        return train_batches, train_od, torch.from_numpy(valid_od), torch.from_numpy(valid_intensity)
+        return train_batches, valid_od, valid_intensity
     elif mode == 'test':
         test_od, test_intensity = read_flows(os.path.join(file_path, 'test.txt'), entity2id)
 
         print('\tTest dataset:')
         print('\t\tnum_triples: {}'.format(len(test_od)))
-        return torch.from_numpy(test_od), torch.from_numpy(test_intensity)
+        return test_od, test_intensity
     else:
         raise Exception('Wrong mode.')
 
@@ -94,21 +93,20 @@ def load_flow_data(file_path, entity2id, mode, batch_size=128):
 def read_flows(file_path, entity2id):
     od = []
     intensity = []
-
-    with open(file_path) as f:
+    with open(file_path, encoding='utf-8') as f:
         for line in f:
             head, tail, m = line.strip().split('\t')
             od.append((entity2id[head], 0, entity2id[tail]))
             intensity.append(float(m))
+    return torch.from_numpy(np.array(od)), torch.from_numpy(np.array(intensity).astype(np.float32))
 
-    return np.array(od), np.array(intensity)
 
-
-def negative_sampling(pos_samples, pos_labels, entity_set, negative_num, known_samples=None):
+def negative_sampling(pos_samples, pos_labels, entity_set, negative_num, exclusive=False):
+    print('Sample negative flows...')
     candidate = []
-    if known_samples is not None:
+    if exclusive:
         known_edges = set()
-        for edge in known_samples:
+        for edge in pos_samples:
             known_edges.add((edge[0], edge[2]))
 
         for i in entity_set:
@@ -137,14 +135,11 @@ def batch_generator(triplets, labels, batch_size=0):
     if batch_size <= 0 or batch_size > triplets.shape[0]:
         batch_size = triplets.shape[0]
 
-    return DataLoader(TensorDataset(torch.from_numpy(triplets), torch.from_numpy(labels)), batch_size=batch_size,
-                      shuffle=True, num_workers=0)
+    return DataLoader(TensorDataset(triplets, labels), batch_size=batch_size, shuffle=True, num_workers=4)
 
 
 def edge_normalization(edge_type, edge_index, num_entity, num_relation):
     '''
-        Edge normalization trick: 对一个src节点、一种关系，对应n个dst，则该src节点、关系的边权为1/n
-        例如，A to C, A to D两条边的权都为1/2。在build_test_graph时添加了对称关系，边正则化时原关系和对称关系独立计算
         - one_hot: (num_edge, num_relation)
         - deg: (num_node, num_relation)
         - index: (num_edge)
@@ -152,18 +147,10 @@ def edge_normalization(edge_type, edge_index, num_entity, num_relation):
         - edge_norm: (num_edge)
     '''
     one_hot = F.one_hot(edge_type, num_classes=2 * num_relation).to(torch.float)
-    # print('-------one hot:')
-    # print(one_hot)
     deg = scatter_add(one_hot, edge_index[0], dim=0, dim_size=num_entity)
-    # print('-------deg:')
-    # print(deg)
     index = edge_type + torch.arange(len(edge_index[0])) * (2 * num_relation)
-    # print('-------index:')
-    # print(index)
     edge_norm = 1 / deg[edge_index[0]].view(-1)[index]
-    # print(deg[edge_index[0]].view(-1))
-    # print(deg[edge_index[0]].view(-1)[index])
-    # print(edge_norm)
+
     return edge_norm
 
 
@@ -174,19 +161,10 @@ def build_embedding_graph(num_nodes, num_rels, triplets):
     rel = torch.from_numpy(rel)
     dst = torch.from_numpy(dst)
 
-    # Create bi-directional graph
+    # Trick: Create a bi-directional graph
     src, dst = torch.cat((src, dst)), torch.cat((dst, src))
-    # print('-------src:')
-    # print(src)
-    # print('-------dst:')
-    # print(dst)
-    edge_type = torch.cat((rel, rel + num_rels))
-
+    edge_type = torch.cat((rel, rel+num_rels))
     edge_index = torch.stack((src, dst))
-    # print('-------edge_index:')
-    # print(edge_index)
-    # print('-------edge_type:')
-    # print(edge_type)
 
     data = Data(edge_index=edge_index)
     data.entity = torch.from_numpy(np.arange(num_nodes))

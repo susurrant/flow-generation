@@ -11,17 +11,29 @@ from torch_geometric.nn.conv import MessagePassing
 
 from utils import uniform
 
+from sklearn.metrics import mean_squared_error, r2_score
+import numpy as np
+import pandas as pd
+
+
+def setup_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
 
 class RGCN(torch.nn.Module):
-    def __init__(self, num_entities, num_relations, num_bases, embedding_size, dropout, bias=0):
+    def __init__(self, num_entities, num_relations, num_bases, embedding_size, dropout, bias=0, seed=None):
+        if seed:
+            setup_seed(seed)
         super(RGCN, self).__init__()
-
         self.entity_embedding = nn.Embedding(num_entities, embedding_size)
         self.relation_embedding = nn.Parameter(torch.Tensor(1, embedding_size, embedding_size))
         self.bias = nn.Parameter(torch.Tensor(1))
-        # nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
-        nn.init.xavier_uniform_(self.relation_embedding)
+
+        nn.init.xavier_uniform_(self.relation_embedding)  # gain=nn.init.calculate_gain('relu')
         nn.init.constant_(self.bias, bias)
+
+        nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
 
         self.conv1 = RGCNConv(
             embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
@@ -53,6 +65,40 @@ class RGCN(torch.nn.Module):
         score = self.distmult(embedding, triplets)
 
         return F.mse_loss(score, target)
+
+    def score_rmse(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return mean_squared_error(target.detach().numpy(), score.detach().numpy(), squared=False)
+
+    def score_mape(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return np.mean(np.abs((score.detach().numpy() - target.detach().numpy()) / target.detach().numpy()))
+
+    def score_cpc(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+        y_true = list(target.detach().numpy())
+        y_pred = list(score.detach().numpy())
+        flow_min = 0
+        flow_sum = 0
+        for i in range(len(y_true)):
+            flow_min = flow_min + min(y_true[i], y_pred[i])
+            flow_sum = flow_sum + (y_true[i] + y_pred[i])
+        return 2 * flow_min / flow_sum
+
+    def score_r2(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return r2_score(target.detach().numpy(), score.detach().numpy())
+
+    def export_results(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+        df = pd.DataFrame()
+        df['pred'] = score.detach().numpy()
+        df['obs'] = target.detach().numpy()
+
+        return df
 
     def reg_loss(self, embedding):
         return torch.mean(embedding.pow(2)) + torch.mean(self.relation_embedding.pow(2))
@@ -125,25 +171,14 @@ class RGCNConv(MessagePassing):
 
     def message(self, x_j, edge_index_j, edge_type, edge_norm):
         w = torch.matmul(self.att, self.basis.view(self.num_bases, -1))
+        w = w.view(self.num_relations, self.in_channels, self.out_channels)
+        w = torch.index_select(w, 0, edge_type)
+        out = torch.bmm(x_j.unsqueeze(1), w).squeeze(-2)
 
-        # If no node features are given, we implement a simple embedding
-        # lookup based on the target node index and its edge type.
-        if x_j is None:
-            w = w.view(-1, self.out_channels)
-            index = edge_type * self.in_channels + edge_index_j
-            out = torch.index_select(w, 0, index)
-        else:
-            w = w.view(self.num_relations, self.in_channels, self.out_channels)
-            w = torch.index_select(w, 0, edge_type)
-            # e.g., 5: edge nums (nodes), 4: in_channels, 8: out_channels
-            # (5, 4) -> (5, 1, 4) matmul (5, 4, 8) -> (5, 1, 8) squeeze -> (5, 8)
-            out = torch.bmm(x_j.unsqueeze(1), w).squeeze(-2)
-
-        # For symmetric normalization, since aggr='mean' in MessagePassing
         return out if edge_norm is None else out * edge_norm.view(-1, 1)
 
     def update(self, aggr_out, x):
-        if self.root is not None:   # add self-loop
+        if self.root is not None:   # self-loop
             if x is None:
                 aggr_out += self.root
             else:

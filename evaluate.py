@@ -16,13 +16,13 @@ import shutil
 def evaluate(args, file_mark):
     setting = read_setting(args.setting)
 
-    entity2id, relation2id, embedding_graph = load_graph_data(args.dataset)
+    entity2id, relation2id, embedding_graph = load_graph_data(args.dataset, verbose=0)
     test_samples, test_labels = load_flow_data(args.dataset, entity2id, mode='test')
 
     model = RGCN(len(entity2id), len(relation2id), num_bases=int(setting['n_bases']),
                  embedding_size=int(setting['embedding_size']), dropout=float(setting['dropout']))
 
-    checkpoint = torch.load('./model/'+args.model)
+    checkpoint = torch.load('saved_model/'+args.model)
     model.load_state_dict(checkpoint['state_dict'])
 
     model.eval()
@@ -42,15 +42,15 @@ def evaluate(args, file_mark):
 
 
 if __name__ == '__main__':
-    model_path = 'model/'
     with open('metrics.csv', 'w') as f:
         f.write('model,rmse,mape,cpc,r2\r\n')
-        for file in os.listdir(model_path):
+        for file in os.listdir('saved_model/'):
             if file[-3:] == 'pth':
-                print(file)
+                print('\n------------------------------------')
+                print('Model:', file)
                 file_mark = file[0:-4]
                 # Attention: Replace the graph file that is used for training
-                shutil.copy2('data/graph_knn/graph_30.txt', 'data/mobility/graph.txt')
+                # shutil.copy2('data/graph_knn/graph_30.txt', 'data/mobility/graph.txt')
 
                 parser = argparse.ArgumentParser(description='RGCN')
                 parser.add_argument("--dataset", type=str, default="./data/mobility")
@@ -58,10 +58,11 @@ if __name__ == '__main__':
                 parser.add_argument("--model", type=str, default=file)
 
                 args = parser.parse_args()
-                print('Data path:')
-                print('\t' + args.dataset)
-                print('Setting file:')
-                print('\t' + args.setting)
+                # print('Data path:')
+                # print('\t' + args.dataset)
+                # print('Setting file:')
+                # print('\t' + args.setting)
 
                 r = evaluate(args, file_mark)
+                print('[rmse, mape, cpc, r2]=', r)
                 f.write(','.join([file_mark] + list(map(str, r)))+'\r\n')

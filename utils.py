@@ -48,7 +48,7 @@ def load_entity_relation(file_path):
     return entity2id, relation2id
 
 
-def load_graph_data(file_path):
+def load_graph_data(file_path, verbose=1):
     print('\nLoad graph data...')
     entity2id, relation2id = load_entity_relation(file_path)
 
@@ -58,10 +58,11 @@ def load_graph_data(file_path):
             head, relation, tail = line.strip().split('\t')
             graph_triplets.append((entity2id[head], relation2id[relation], entity2id[tail]))
 
-    print('\tGraph structure:')
-    print('\t\tnum_entity: {}'.format(len(entity2id)))
-    print('\t\tnum_relation: {}'.format(len(relation2id)))
-    print('\t\tnum_graph_triples: {}'.format(len(graph_triplets)))
+    if verbose:
+        print('\tGraph structure:')
+        print('\t\tnum_entity: {}'.format(len(entity2id)))
+        print('\t\tnum_relation: {}'.format(len(relation2id)))
+        print('\t\tnum_graph_triples: {}'.format(len(graph_triplets)))
 
     embedding_graph = build_embedding_graph(len(entity2id), len(relation2id), np.array(graph_triplets))
 
@@ -74,17 +75,14 @@ def load_flow_data(file_path, entity2id, mode, batch_size=0):
         train_od, train_intensity = read_flows(os.path.join(file_path, 'train.txt'), entity2id)
         valid_od, valid_intensity = read_flows(os.path.join(file_path, 'valid.txt'), entity2id)
 
-        print('\tTraining dataset:')
-        print('\t\tnum_train_triples: {}'.format(len(train_od)))
-        print('\t\tnum_valid_triples: {}'.format(len(valid_od)))
+        print('\t\t# train flows: {}, # validation flows: {}'.format(len(train_od), len(valid_od)))
 
         train_batches = batch_generator(train_od, train_intensity, batch_size)
         return train_batches, valid_od, valid_intensity
     elif mode == 'test':
         test_od, test_intensity = read_flows(os.path.join(file_path, 'test.txt'), entity2id)
 
-        print('\tTest dataset:')
-        print('\t\tnum_triples: {}'.format(len(test_od)))
+        print('\t# test flows: {}'.format(len(test_od)))
         return test_od, test_intensity
     else:
         raise Exception('Wrong mode.')

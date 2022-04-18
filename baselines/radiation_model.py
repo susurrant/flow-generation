@@ -2,30 +2,6 @@
 from func import *
 
 
-def load_flow_data(path):
-    train_f = read_flows(path + 'train.txt')
-    test_f = read_flows(path + 'test.txt')
-    validation_f = read_flows(path + 'valid.txt')
-
-    total_f = {}
-    for f in train_f:
-        if f[0] not in total_f:
-            total_f[f[0]] = 0
-        total_f[f[0]] += f[2]
-
-    for f in test_f:
-        if f[0] not in total_f:
-            total_f[f[0]] = 0
-        total_f[f[0]] += f[2]
-
-    for f in validation_f:
-        if f[0] not in total_f:
-            total_f[f[0]] = 0
-        total_f[f[0]] += f[2]
-
-    return test_f, total_f
-
-
 def predict(test_f, total_f, features):
     real = []
     pred = []
@@ -33,26 +9,30 @@ def predict(test_f, total_f, features):
         real.append(f[2])
         ogid = f[0]
         dgid = f[1]
-        # Feature dict: [x/lng, y/lat, feature]
+        # Feature dict: [x/lng, y/lat, push, pull]
         opop = features[ogid][2]
-        dpop = features[dgid][2]
+        dpop = features[dgid][3]
         d = haversine_distance(features[ogid][0], features[ogid][1], features[dgid][0], features[dgid][1])
 
         s = 0
         for gid in features:
             if gid != ogid and gid != dgid:
-                if haversine_distance(features[ogid][0], features[ogid][1], features[gid][0], features[gid][1]) <= d:
+                if haversine_distance(features[ogid][0], features[ogid][1], features[gid][0], features[gid][1]) < d:
                     s += features[gid][2]
-        pred.append(total_f[ogid]*opop*dpop/((opop+s)*(opop+dpop+s)))
 
+        r = total_f[ogid][2] * opop * dpop / ((opop + s) * (opop + dpop + s))
+        pred.append(r)
+    # print(min(pred), max(pred))
     return pred, real
 
 
 if __name__ == '__main__':
-    path = '../data/simple/'
-    test_flows, total_flows = load_flow_data(path)
-    features = read_features(path + 'features.txt')
+    path = '../data/'
+    test_flows = read_flows([path + 'test.txt'])
+    population = read_features(path + 'features_pop.txt')
+    total_f = read_features(path + 'features_flow.txt')
 
-    pred, real = predict(test_flows, total_flows, features)
-    #np.savetxt('../data/pred_RM.txt', pred, delimiter=',')
+    pred, real = predict(test_flows, total_f, population)
+    result = np.concatenate((np.array(real).reshape((-1, 1)), np.array(pred).reshape((-1,1))), axis=1)
+    np.savetxt('pred_RM.txt', result, delimiter=',')
     evaluate(pred, real)

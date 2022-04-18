@@ -3,27 +3,55 @@
 import math
 import numpy as np
 from scipy import stats
+from sklearn.metrics import r2_score
 
 
-def read_flows(filename):
+def read_flows(filenames):
     data = []
-    with open(filename, 'r') as f:
-        flows = f.readlines()
-        for flow in flows:
-            sl = flow.strip().split('\t')
-            data.append([sl[0], sl[1], float(sl[2])])
+    for fn in filenames:
+        with open(fn, 'r') as f:
+            flows = f.readlines()
+            for flow in flows:
+                sl = flow.strip().split('\t')
+                data.append([sl[0], sl[1], float(sl[2])])
 
     return data
 
 
-def read_features(feature_file):
+def read_features(feature_file, normalized=False):
     features = {}
+    min_pull, min_push = float('inf'), float('inf')
+    max_pull, max_push = 0, 0
+
     with open(feature_file, 'r') as f:
         lines = f.readlines()
         for line in lines:
             sl = line.strip().split('\t')
-            features[sl[0]] = list(map(float, sl[1:]))
+            features[sl[0]] = list(map(float, sl[1:]))   # [x/lng, y/lat, push, pull]
+            if features[sl[0]][2] < min_push:
+                min_push = features[sl[0]][2]
+            if features[sl[0]][2] > max_push:
+                max_push = features[sl[0]][2]
+            if features[sl[0]][3] < min_pull:
+                min_pull = features[sl[0]][3]
+            if features[sl[0]][3] > max_pull:
+                max_pull = features[sl[0]][3]
+    if normalized:
+        for k in features:
+            features[k][2] = (features[k][2] - min_push) / (max_push - min_push)
+            features[k][3] = (features[k][3] - min_pull) / (max_pull - min_pull)
+
     return features
+
+
+def load_relation_data(filename):
+    rel = {}
+    with open(filename, 'r') as f:
+        for line in f:
+            sl = line.strip().split('\t')
+            rel[(sl[0], sl[1])] = float(sl[2])
+
+    return rel
 
 
 def evaluate(p, r):
@@ -36,8 +64,6 @@ def evaluate(p, r):
     p = np.array(p)
     r = np.array(r)
 
-    #print('MAE:', round(np.mean(np.abs(r - p)),3))
-
     c1 = 0
     mape = 0
     c2 = 0
@@ -49,21 +75,23 @@ def evaluate(p, r):
         if r[i] + p[i]:
             ssi += min(r[i], p[i]) / (r[i] + p[i])
             c2 += 1
-    print('MAPE:', round(mape / c1, 3))
+    mape = mape / c1
+    print('MAPE:', round(mape, 3))
 
-    #print('MSE:', round(np.mean(np.square(r - p)), 3))
-    print('RMSE:', round(np.sqrt(np.mean(np.square(r - p))), 3))
+    rmse = np.sqrt(np.mean(np.square(r - p)))
+    print('RMSE:', round(rmse, 3))
 
     stack = np.column_stack((p, r))
-    print('CPC:', round(2 * np.sum(np.min(stack, axis=1)) / np.sum(stack), 3))
-
-    #print('SSI:', round(ssi * 2 / (c2 ^ 2), 3))
+    cpc = 2 * np.sum(np.min(stack, axis=1)) / np.sum(stack)
+    print('CPC:', round(cpc, 3))
 
     smc = stats.spearmanr(r, p)
     print('SMC: correlation =', round(smc[0], 3), ', p-value =', round(smc[1], 3))
 
-    #llr = stats.linregress(r, p)
-    #print('LLR: R =', round(llr[2], 3), ', p-value =', round(llr[3], 3))
+    r2 = r2_score(r, p)
+    print('R2:', round(r2, 3))
+
+    return [rmse, mape, cpc, smc[0], r2]
 
 
 def haversine(theta):

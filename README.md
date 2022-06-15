@@ -1,4 +1,4 @@
-# flow-gcn
+# flow-generation
 
 ## Requirements:
 - python 3.7.x

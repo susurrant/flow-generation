@@ -1,0 +1,9 @@
+A	D	20
+D	A	24
+A	B	17
+B	A	21
+C	A	10
+E	D	30
+D	B	16
+D	C	15
+C	E	18

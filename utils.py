@@ -48,7 +48,7 @@ def load_entity_relation(file_path):
     return entity2id, relation2id
 
 
-def load_graph_data(file_path, verbose=1):
+def load_graph_data(file_path):
     print('\nLoad graph data...')
     entity2id, relation2id = load_entity_relation(file_path)
 
@@ -58,31 +58,33 @@ def load_graph_data(file_path, verbose=1):
             head, relation, tail = line.strip().split('\t')
             graph_triplets.append((entity2id[head], relation2id[relation], entity2id[tail]))
 
-    if verbose:
-        print('\tGraph structure:')
-        print('\t\tnum_entity: {}'.format(len(entity2id)))
-        print('\t\tnum_relation: {}'.format(len(relation2id)))
-        print('\t\tnum_graph_triples: {}'.format(len(graph_triplets)))
+    print('\tGraph structure:')
+    print('\t\tnum_entity: {}'.format(len(entity2id)))
+    print('\t\tnum_relation: {}'.format(len(relation2id)))
+    print('\t\tnum_graph_triples: {}'.format(len(graph_triplets)))
 
     embedding_graph = build_embedding_graph(len(entity2id), len(relation2id), np.array(graph_triplets))
 
     return entity2id, relation2id, embedding_graph
 
 
-def load_flow_data(file_path, entity2id, mode, batch_size=0):
+def load_flow_data(file_path, entity2id, mode, batch_size=256):
     print('\nLoad flow data...')
     if mode == 'train':
         train_od, train_intensity = read_flows(os.path.join(file_path, 'train.txt'), entity2id)
         valid_od, valid_intensity = read_flows(os.path.join(file_path, 'valid.txt'), entity2id)
 
-        print('\t\t# train flows: {}, # validation flows: {}'.format(len(train_od), len(valid_od)))
+        print('\tTraining dataset:')
+        print('\t\tnum_train_triples: {}'.format(len(train_od)))
+        print('\t\tnum_valid_triples: {}'.format(len(valid_od)))
 
         train_batches = batch_generator(train_od, train_intensity, batch_size)
         return train_batches, valid_od, valid_intensity
     elif mode == 'test':
         test_od, test_intensity = read_flows(os.path.join(file_path, 'test.txt'), entity2id)
 
-        print('\t# test flows: {}'.format(len(test_od)))
+        print('\tTest dataset:')
+        print('\t\tnum_triples: {}'.format(len(test_od)))
         return test_od, test_intensity
     else:
         raise Exception('Wrong mode.')
@@ -99,51 +101,14 @@ def read_flows(file_path, entity2id):
     return torch.from_numpy(np.array(od)), torch.from_numpy(np.array(intensity).astype(np.float32))
 
 
-def negative_sampling(pos_samples, pos_labels, entity_set, negative_num, exclusive=False):
-    print('Sample negative flows...')
-    candidate = []
-    if exclusive:
-        known_edges = set()
-        for edge in pos_samples:
-            known_edges.add((edge[0], edge[2]))
-
-        for i in entity_set:
-            for j in entity_set:
-                if i != j and (i, j) not in known_edges:
-                    candidate.append([i, 0, j])
-    else:
-        for i in entity_set:
-            for j in entity_set:
-                if i != j:
-                    candidate.append([i, 0, j])
-
-    candidate_num = len(candidate)
-    negative_num = negative_num if negative_num < candidate_num else candidate_num
-    idx = np.random.choice(candidate_num, size=negative_num, replace=False)
-    neg_samples = np.array(candidate)[idx]
-
-    samples = np.concatenate((pos_samples, neg_samples))
-    labels = np.zeros(samples.shape[0], dtype=np.float32)
-    labels[:pos_samples.shape[0]] = pos_labels[:]
-
-    return torch.from_numpy(samples), torch.from_numpy(labels)
-
-
 def batch_generator(triplets, labels, batch_size=0):
     if batch_size <= 0 or batch_size > triplets.shape[0]:
         batch_size = triplets.shape[0]
 
-    return DataLoader(TensorDataset(triplets, labels), batch_size=batch_size, shuffle=True, num_workers=4)
+    return DataLoader(TensorDataset(triplets, labels), batch_size=batch_size, shuffle=True)
 
 
 def edge_normalization(edge_type, edge_index, num_entity, num_relation):
-    '''
-        - one_hot: (num_edge, num_relation)
-        - deg: (num_node, num_relation)
-        - index: (num_edge)
-        - deg[edge_index[0]]: (num_edge, num_relation)
-        - edge_norm: (num_edge)
-    '''
     one_hot = F.one_hot(edge_type, num_classes=2 * num_relation).to(torch.float)
     deg = scatter_add(one_hot, edge_index[0], dim=0, dim_size=num_entity)
     index = edge_type + torch.arange(len(edge_index[0])) * (2 * num_relation)
@@ -159,9 +124,10 @@ def build_embedding_graph(num_nodes, num_rels, triplets):
     rel = torch.from_numpy(rel)
     dst = torch.from_numpy(dst)
 
-    # Trick: Create a bi-directional graph
+    # Create a bi-directional graph
     src, dst = torch.cat((src, dst)), torch.cat((dst, src))
     edge_type = torch.cat((rel, rel+num_rels))
+
     edge_index = torch.stack((src, dst))
 
     data = Data(edge_index=edge_index)

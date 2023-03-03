@@ -12,8 +12,10 @@ from torch_geometric.nn.conv import MessagePassing
 from utils import uniform
 
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import explained_variance_score, mean_absolute_error
 import numpy as np
 import pandas as pd
+import scipy
 
 
 def setup_seed(seed):
@@ -30,22 +32,19 @@ class RGCN(torch.nn.Module):
         self.relation_embedding = nn.Parameter(torch.Tensor(1, embedding_size, embedding_size))
         self.bias = nn.Parameter(torch.Tensor(1))
 
-        nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
+        nn.init.xavier_uniform_(self.relation_embedding)  # gain=nn.init.calculate_gain('relu')
         nn.init.constant_(self.bias, bias)
 
-        self.conv1 = RGCNConv(
+        nn.init.xavier_uniform_(self.relation_embedding, gain=nn.init.calculate_gain('relu'))
+
+        self.conv = RGCNConv(
             embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
-        # self.conv2 = RGCNConv(
-        #     embedding_size, embedding_size, num_relations * 2, num_bases=num_bases)
 
         self.dropout_ratio = dropout
 
     def forward(self, entity, edge_index, edge_type, edge_norm):
         x = self.entity_embedding(entity)
-        x = self.conv1(x, edge_index, edge_type, edge_norm)
-        # x = F.relu(self.conv1(x, edge_index, edge_type, edge_norm))
-        # x = F.dropout(x, p=self.dropout_ratio, training=self.training)
-        # x = self.conv2(x, edge_index, edge_type, edge_norm)
+        x = self.conv(x, edge_index, edge_type, edge_norm)
         
         return x
 
@@ -64,10 +63,10 @@ class RGCN(torch.nn.Module):
 
         return F.mse_loss(score, target)
 
-    def score_rmse(self, embedding, triplets, target):
+    def score_mse(self, embedding, triplets, target):
         score = self.distmult(embedding, triplets)
-
-        return mean_squared_error(target.detach().numpy(), score.detach().numpy(), squared=False)
+        print(target.detach().numpy(), score.detach().numpy())
+        return mean_squared_error(target.detach().numpy(), score.detach().numpy())
 
     def score_mape(self, embedding, triplets, target):
         score = self.distmult(embedding, triplets)
@@ -85,17 +84,36 @@ class RGCN(torch.nn.Module):
             flow_sum = flow_sum + (y_true[i] + y_pred[i])
         return 2 * flow_min / flow_sum
 
+    def score_mae(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return mean_absolute_error(target.detach().numpy(), score.detach().numpy())
+
+    def score_evs(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return explained_variance_score(target.detach().numpy(), score.detach().numpy())
+
     def score_r2(self, embedding, triplets, target):
         score = self.distmult(embedding, triplets)
 
         return r2_score(target.detach().numpy(), score.detach().numpy())
+
+    def score_scc(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return scipy.stats.spearmanr(target.detach().numpy(), score.detach().numpy())[0]
+
+    def score_scc_pvalue(self, embedding, triplets, target):
+        score = self.distmult(embedding, triplets)
+
+        return scipy.stats.spearmanr(target.detach().numpy(), score.detach().numpy())[1]
 
     def export_results(self, embedding, triplets, target):
         score = self.distmult(embedding, triplets)
         df = pd.DataFrame()
         df['pred'] = score.detach().numpy()
         df['obs'] = target.detach().numpy()
-
         return df
 
     def reg_loss(self, embedding):
@@ -169,14 +187,22 @@ class RGCNConv(MessagePassing):
 
     def message(self, x_j, edge_index_j, edge_type, edge_norm):
         w = torch.matmul(self.att, self.basis.view(self.num_bases, -1))
-        w = w.view(self.num_relations, self.in_channels, self.out_channels)
-        w = torch.index_select(w, 0, edge_type)
-        out = torch.bmm(x_j.unsqueeze(1), w).squeeze(-2)
+
+        # If no node features are given, we implement a simple embedding
+        # lookup based on the target node index and its edge type.
+        if x_j is None:
+            w = w.view(-1, self.out_channels)
+            index = edge_type * self.in_channels + edge_index_j
+            out = torch.index_select(w, 0, index)
+        else:
+            w = w.view(self.num_relations, self.in_channels, self.out_channels)
+            w = torch.index_select(w, 0, edge_type)
+            out = torch.bmm(x_j.unsqueeze(1), w).squeeze(-2)
 
         return out if edge_norm is None else out * edge_norm.view(-1, 1)
 
     def update(self, aggr_out, x):
-        if self.root is not None:   # self-loop
+        if self.root is not None:
             if x is None:
                 aggr_out += self.root
             else:

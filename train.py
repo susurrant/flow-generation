@@ -15,15 +15,17 @@ from utils import load_graph_data, load_flow_data, read_setting
 from models import RGCN
 
 
-def train(dataset, setting):
+def main(args):
+    setting = read_setting(args.setting)
+
     use_cuda = int(setting['gpu']) >= 0 and torch.cuda.is_available()
     if use_cuda:
         torch.cuda.set_device(setting['gpu'])
 
-    entity2id, relation2id, embedding_graph = load_graph_data(dataset)
+    entity2id, relation2id, embedding_graph = load_graph_data(args.dataset)
     train_batches, valid_samples, valid_labels \
-        = load_flow_data(dataset, entity2id, mode='train', batch_size=int(setting['batch_size']))
-    
+        = load_flow_data(args.dataset, entity2id, mode='train', batch_size=int(setting['batch_size']))
+
     print('\nCreate model...')
     seed = None
     if 'seed' in setting:
@@ -37,11 +39,9 @@ def train(dataset, setting):
         model.cuda()
 
     print('\nStart training...')
-    saved_file_tag = 'saved_model/' + dataset.split('/')[-1] + \
-                     '_nb' + setting['n_bases'] + \
-                     '_es' + setting['embedding_size']
     best_loss = np.inf
-    saved_model_name = saved_file_tag + '_' + datetime.datetime.now().strftime('%Y%m%d-%H-%M-%S') + '.pth'
+    saved_model_name = args.dataset.split('/')[-1] + '_es' + setting['embedding_size'] + '_' + \
+                       datetime.datetime.now().strftime('%Y%m%d-%H-%M-%S')
     df_losses = pd.DataFrame()
     ls_train_loss = []
     ls_valid_loss = []
@@ -72,6 +72,7 @@ def train(dataset, setting):
 
             if use_cuda:
                 model.cpu()
+
             model.eval()
 
             entity_embedding = model(embedding_graph.entity, embedding_graph.edge_index, embedding_graph.edge_type,
@@ -81,34 +82,35 @@ def train(dataset, setting):
             if valid_loss < best_loss:
                 print('\t\tloss decreased {:.4f} --> {:.4f}. saving model...'.format(best_loss, valid_loss))
                 best_loss = valid_loss
-                torch.save({'state_dict': model.state_dict(), 'epoch': epoch}, saved_model_name)
+                torch.save({'state_dict': model.state_dict(), 'epoch': epoch}, 'output/'+saved_model_name+'.pth')
 
             if use_cuda:
                 model.cuda()
             ls_train_loss.append((sum(train_losses)/len(train_losses)).detach().numpy())
             ls_valid_loss.append(best_loss.detach().numpy())
 
-    file_name = saved_file_tag + '_loss.csv'
+    file_name = saved_model_name + '_losses'
     df_losses['train_loss'] = ls_train_loss
     df_losses['valid_loss'] = ls_valid_loss
-    df_losses.to_csv(file_name, header=True, index=False)
+    df_losses.to_csv('output/'+file_name+'.csv', header=True, index=False, encoding='gbk')
 
 
 if __name__ == '__main__':
+    start_time = time.time()
+
     parser = argparse.ArgumentParser(description='RGCN')
-    parser.add_argument("--flow", type=str, default="./data/mobility")
+    parser.add_argument("--dataset", type=str, default="./data/test")
     parser.add_argument("--setting", type=str, default="./setting.txt")
 
     args = parser.parse_args()
-    print('Flow path:')
-    print('\t' + args.flow)
+    print('Data path:')
+    print('\t' + args.dataset)
     print('Setting file:')
     print('\t' + args.setting)
 
-    start_time = time.time()
-    setting = read_setting(args.setting)
-    train(args.flow, setting)
+    main(args)
 
     running_time = (time.time() - start_time) / 60
     print('\nCreated and saved models successfully!')
     print('Total time cost: %.2f mins' % running_time)
+

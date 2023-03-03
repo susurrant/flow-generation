@@ -1,6 +1,4 @@
-batch_size=256
-negative_num=0
-negative_exclusive=True
+batch_size=4
 n_epochs=250
 evaluate_every=1
 dropout=0.5
@@ -10,4 +8,3 @@ n_bases=1
 embedding_size=25
 regularization=0.01
 grad_norm=1.0
-seed=1024
